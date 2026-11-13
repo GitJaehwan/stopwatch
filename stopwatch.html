@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>몽실 사냥단 스탑워치</title>
+<style>
+  :root { --bg:#10131a; --card:#1a1f2b; --text:#f2f4f8; --muted:#8b93a7; --accent:#4f8cff; --stop:#ff5a5f; --ok:#35c58a; --ink:#6b5656; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:var(--text); font-family:'Segoe UI','Malgun Gothic',sans-serif; padding:16px; }
+  .app { width:100%; max-width:480px; background:var(--card); border-radius:24px; padding:18px; box-shadow:0 20px 50px rgba(0,0,0,.4); }
+
+  /* ================= 2.5D 무대 ================= */
+  .stage { position:relative; height:330px; border-radius:18px; overflow:hidden; perspective:1000px; perspective-origin:50% 20%;
+           background:linear-gradient(#8fd3ff,#e6f7ff 60%); user-select:none; }
+  .stage[data-scene=home] { background:linear-gradient(#3a2b52,#6b4a73); }
+  .cam { position:absolute; inset:0; transform-style:preserve-3d; animation:sway 10s ease-in-out infinite alternate; }
+  @keyframes sway { from{transform:rotateY(-6deg)} to{transform:rotateY(6deg)} }
+  .ground { position:absolute; left:50%; top:50%; width:620px; height:520px; margin:-215px 0 0 -310px;
+            transform:translateZ(-200px) rotateX(60deg); transform-style:preserve-3d;
+            background:repeating-linear-gradient(90deg,#86d974 0 70px,#7bcf69 70px 140px); }
+  .stage[data-scene=home] .ground { background:repeating-linear-gradient(90deg,#c9915c 0 56px,#be8650 56px 58px); }
+  .ground::before { content:''; position:absolute; inset:0 -500px; background:inherit; }
+  .back { position:absolute; left:-500px; right:-500px; bottom:100%; height:420px; transform-origin:50% 100%; transform:rotateX(-60deg); }
+  .back svg { width:100%; height:100%; display:block; }
+  .cloud { position:absolute; background:#fff; border-radius:40px; height:34px; opacity:.95; animation:drift 40s linear infinite; }
+  .cloud::before,.cloud::after { content:''; position:absolute; background:#fff; border-radius:50%; }
+  .cloud::before { width:44px; height:44px; left:14px; top:-20px; } .cloud::after { width:34px; height:34px; right:16px; top:-14px; }
+  @keyframes drift { from{transform:translateX(-120px)} to{transform:translateX(1100px)} }
+  .rug { position:absolute; left:50%; top:62%; width:520px; height:300px; margin:-150px 0 0 -260px; border-radius:50%;
+         background:radial-gradient(#ffd6e0 0 38%,#ffb3c6 39% 62%,#fff0f4 63% 70%,#ffb3c6 71%); border:4px solid #fff; }
+
+  .pos { position:absolute; width:0; height:0; transform-style:preserve-3d; }
+  .ent { position:absolute; left:calc(var(--s)/-2); top:calc(var(--s)*-1); width:var(--s); height:var(--s);
+         transform-origin:50% 100%; transform:rotateX(-60deg); transform-style:preserve-3d; }
+  .spr { position:absolute; inset:0; transform-origin:50% 100%; }
+  .spr svg { width:100%; height:100%; overflow:visible; display:block; }
+  .shadow { position:absolute; left:14%; width:72%; top:100%; height:30%; margin-top:-15%; border-radius:50%; background:rgba(40,30,30,.28); transform:rotateX(60deg); }
+  .fxent { transform:rotateX(-60deg) translateZ(30px); }
+  .label { position:absolute; left:10px; top:10px; z-index:2; background:rgba(0,0,0,.5); color:#fff; font-size:12px; padding:4px 11px; border-radius:20px; backdrop-filter:blur(4px); }
+  .plus { position:absolute; left:0; right:0; top:-6px; text-align:center; font-weight:800; font-size:20px; color:#ff6b9a; text-shadow:0 2px 0 #fff,0 0 8px #fff; opacity:0; }
+
+  /* 표정 전환 */
+  .fh,.fe,.fs,.md,.roots,.fxs,.plus { display:none; }
+  .m-h .fn,.m-s .fn { display:none; } .m-h .fh,.m-s .fs { display:inline; }
+  [data-phase=act] .hunter .fn { display:none; } [data-phase=act] .hunter .fe { display:inline; }
+  [data-phase=act] .hero:not(.hunter) .fn,[data-phase=done] .hero .fn { display:none; }
+  [data-phase=act] .hero:not(.hunter) .fh,[data-phase=done] .hero .fh { display:inline; }
+  [data-phase=done] .target .mn { display:none; } [data-phase=done] .target .md { display:inline; }
+  [data-phase=done] .roots { display:inline; }
+  [data-task=weed] .weapon,.tub .weapon,.bed .weapon,.villager .weapon { display:none; }
+  [data-phase=act] .fxs,[data-phase=done] .fxs { display:block; }
+  [data-phase=act] .fxs { animation:burst .35s ease-in-out infinite; }
+  [data-phase=done] .fxs { animation:burst .6s ease-out 1 forwards; }
+  [data-phase=done] .plus { display:block; animation:floatup 1.2s ease-out forwards .1s; }
+  .fxs { display:none; }
+
+  /* 이동 & 동작 */
+  .pos.hunter { left:var(--x0); top:var(--y0); }
+  [data-phase=approach] .pos.hunter { animation:walk 1.2s ease-in-out forwards; }
+  [data-phase=act] .pos.hunter,[data-phase=done] .pos.hunter { left:var(--x1); top:var(--y1); }
+  @keyframes walk { from{left:var(--x0);top:var(--y0)} to{left:var(--x1);top:var(--y1)} }
+
+  .hero .spr { animation:breath 2.4s ease-in-out infinite; }
+  [data-phase=approach] .hunter .spr { animation:bob .32s ease-in-out infinite; }
+  [data-phase=act] .hunter .spr { animation:lunge .35s ease-in-out infinite; }
+  [data-task=weed][data-phase=act] .hunter .spr { animation:tug .5s ease-in-out infinite; }
+  [data-phase=act] .hero:not(.hunter) .spr,[data-phase=done] .hero .spr { animation:hop .45s ease-in-out infinite; }
+  [data-phase=act] .hunter .swing { animation:swing .35s ease-in-out infinite alternate; }
+  .villager .spr { animation:hop 1.6s ease-in-out infinite; }
+  .target .spr { animation:idle 1.2s ease-in-out infinite; }
+  [data-phase=approach] .target .spr { animation:appear .5s ease-out, idle 1.2s ease-in-out .5s infinite; }
+  [data-phase=act] .target .spr { animation:shake .18s linear infinite; }
+  [data-phase=done] .target.monster .spr { animation:poof .7s ease-in forwards; }
+  [data-phase=done] .target.weed .spr { animation:fly .8s ease-in forwards; }
+  .duck { animation:bob 1.2s ease-in-out infinite; transform-box:fill-box; transform-origin:center; }
+  .zz,.bub { position:absolute; opacity:0; display:none; }
+  [data-phase=sleep] .zz { display:block; animation:rise 2.2s ease-in infinite; font:800 24px sans-serif; color:#fff; text-shadow:0 0 6px #7a5fc9; }
+  [data-phase=wash] .bub { display:block; animation:rise 1.8s ease-in infinite; width:16px; height:16px; border-radius:50%; border:2px solid #fff; background:rgba(255,255,255,.4); }
+  [data-phase=wash] .bed,[data-phase=sleep] .tub { display:none; }
+  .stage.paused *,.stage.paused { animation-play-state:paused !important; }
+  .stage.paused .cam { animation-play-state:paused !important; }
+
+  @keyframes breath { 50%{transform:scale(1.03,.97)} }
+  @keyframes bob { 50%{transform:translateY(-8px)} }
+  @keyframes hop { 50%{transform:translateY(-14px)} }
+  @keyframes idle { 50%{transform:translateY(-4px) scale(1.02,.98)} }
+  @keyframes lunge { 50%{transform:translateX(12px) rotate(6deg)} }
+  @keyframes tug { 0%,100%{transform:translateX(0) rotate(-4deg)} 50%{transform:translateX(-10px) rotate(-12deg)} }
+  @keyframes swing { from{transform:rotate(-70deg)} to{transform:rotate(50deg)} }
+  @keyframes shake { 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+  @keyframes appear { from{transform:scale(0) translateY(-40px)} 70%{transform:scale(1.15)} to{transform:scale(1)} }
+  @keyframes poof { 30%{transform:scale(1.25) translateY(-14px)} to{transform:scale(0) translateY(-140px) rotate(540deg);opacity:0} }
+  @keyframes fly { to{transform:translateY(-240px) rotate(540deg);opacity:0} }
+  @keyframes burst { 0%{opacity:0;transform:scale(.3)} 50%{opacity:1;transform:scale(1.15)} 100%{opacity:0;transform:scale(1.5)} }
+  @keyframes floatup { 0%{opacity:0;transform:translateY(0)} 20%{opacity:1} 100%{opacity:0;transform:translateY(-60px)} }
+  @keyframes rise { 0%{opacity:0;transform:translateY(0) scale(.6)} 30%{opacity:1} 100%{opacity:0;transform:translateY(-70px) scale(1.2)} }
+
+  /* ================= UI ================= */
+  .msg { text-align:center; margin:12px 0 4px; font-size:14px; color:var(--muted); min-height:20px; }
+  .stats { display:flex; justify-content:space-around; margin:6px 0 4px; font-size:14px; }
+  .stats span b { font-size:18px; color:var(--text); margin-left:4px; }
+  .cycle { display:flex; gap:6px; justify-content:center; margin:8px 0; }
+  .cycle i { width:28px; height:8px; border-radius:4px; background:#2b3242; }
+  .cycle i.on { background:var(--accent); } .cycle i.home.on { background:#f5a742; }
+  .crew { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin:8px 0 0; }
+  .crew span { font-size:12px; background:#232a3a; border-radius:20px; padding:4px 10px; color:var(--muted); }
+  .crew b { color:#ffd25e; }
+  .lvup { position:absolute; left:50%; top:46px; transform:translateX(-50%); z-index:3; background:linear-gradient(90deg,#ffd25e,#ff9de2); color:#4a2b3a;
+          font-weight:800; font-size:13px; padding:6px 14px; border-radius:20px; white-space:nowrap; box-shadow:0 4px 14px rgba(0,0,0,.25); animation:banner 2.6s ease-out forwards; }
+  @keyframes banner { 0%{opacity:0;transform:translate(-50%,-10px) scale(.8)} 12%{opacity:1;transform:translate(-50%,0) scale(1.08)} 20%{transform:translate(-50%,0) scale(1)} 85%{opacity:1} 100%{opacity:0} }
+  .aura { transform-box:fill-box; transform-origin:center; animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50%{transform:scale(1.12);opacity:.25} }
+  .twinkle { transform-box:fill-box; transform-origin:center; animation:twinkle .9s ease-in-out infinite; }
+  @keyframes twinkle { 50%{transform:scale(1.6) rotate(45deg);opacity:.4} }
+  .wl5 { filter:drop-shadow(0 0 4px #fff59e); } .wl4 { filter:drop-shadow(0 0 3px #8fe9ff); }
+  .time { font-size:clamp(40px,12vw,56px); font-weight:300; text-align:center; font-variant-numeric:tabular-nums; letter-spacing:1px; margin:8px 0 16px; }
+  .time small { font-size:.5em; color:var(--muted); }
+  .btns { display:flex; gap:10px; }
+  button { flex:1; padding:13px; border:0; border-radius:14px; font-size:16px; font-weight:600; color:#fff; cursor:pointer; background:#2b3242; transition:.15s; }
+  button:hover { filter:brightness(1.15); } button:active { transform:scale(.97); }
+  #start { background:var(--ok); } #start.running { background:var(--stop); } #lap { background:var(--accent); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  ul { list-style:none; margin:14px 0 0; padding:0; max-height:110px; overflow-y:auto; }
+  li { display:flex; justify-content:space-between; padding:8px 4px; border-bottom:1px solid #2b3242; font-variant-numeric:tabular-nums; color:var(--muted); font-size:14px; }
+  li b { color:var(--text); font-weight:500; } li.best b { color:var(--ok); } li.worst b { color:var(--stop); }
+  .hint { text-align:center; color:var(--muted); font-size:12px; margin-top:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage" data-scene="work" data-phase="idle" data-task="monster"></div>
+  <div class="msg" id="msg">시작 버튼을 누르면 모험이 시작돼요!</div>
+  <div class="cycle" id="cycle"><i></i><i></i><i></i><i class="home"></i></div>
+  <div class="stats">
+    <span>👹 괴물<b id="sMon">0</b></span>
+    <span>🌿 잡초<b id="sWeed">0</b></span>
+    <span>🏠 휴식<b id="sRest">0</b></span>
+  </div>
+  <div class="crew" id="crew"></div>
+  <div class="time" id="display">00:00<small>.00</small></div>
+  <div class="btns">
+    <button id="start">시작</button>
+    <button id="lap" disabled>랩</button>
+    <button id="reset" disabled>초기화</button>
+  </div>
+  <ul id="laps"></ul>
+  <div class="hint">3초마다 한 번 일하고, 3번 하면 집에서 쉬어요 · 스페이스 = 시작/정지 · L = 랩 · R = 초기화</div>
+</div>
+
+<script>
+/* ============ SVG 아트 ============ */
+const INK = '#6b5656';
+const S = `stroke="${INK}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"`;
+
+/* ---- 장비 성장: 경험치(괴물 2, 잡초 1) → 레벨 1~5 ---- */
+const LV_AT = [0, 2, 5, 9, 14];
+const WNAMES = {
+  sword:  ['나무 검','철 검','황금 검','수정 검','전설의 무지개 검'],
+  mallet: ['나무 망치','철 망치','황금 망치','수정 망치','전설의 별빛 망치'],
+  pan:    ['낡은 프라이팬','철 프라이팬','황금 프라이팬','수정 프라이팬','전설의 은하 프라이팬']
+};
+const TIER = ['#d9b98f','#d8e0ea','#ffd25e','#8fe9ff','#ff9de2'];
+const sparkle = `<path class="twinkle" d="M0 -58 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z" fill="#fff59e"/>`;
+function weaponSVG(kind, lv) {
+  const m = TIER[lv-1], sc = 1 + .09*(lv-1);
+  let b;
+  if (kind === 'sword') b = `<rect x="-2.5" y="-4" width="5" height="13" fill="#b07a4f" ${S}/><rect x="-9" y="-7" width="18" height="5" rx="2" fill="${lv>=3?'#ffd25e':'#b0b8c4'}" ${S}/><rect x="-4.5" y="-42" width="9" height="35" rx="4" fill="${m}" ${S}/>${lv>=3?'<circle cx="0" cy="-4.5" r="2.6" fill="#ff5c8a"/>':''}${lv>=4?'<path d="M0 -36 V-14" stroke="#fff" stroke-width="2" opacity=".85" stroke-linecap="round"/>':''}`;
+  else if (kind === 'mallet') b = `<rect x="-2.5" y="-34" width="5" height="46" rx="2" fill="${lv>=3?'#d9a441':'#b07a4f'}" ${S}/><rect x="-15" y="-48" width="30" height="18" rx="6" fill="${lv===1?'#ff9ec1':m}" ${S}/><circle cx="-8" cy="-39" r="2" fill="#fff"/>${lv>=3?'<circle cx="-19" cy="-39" r="3" fill="#fff4b0" '+S+' stroke-width="1.6"/><circle cx="19" cy="-39" r="3" fill="#fff4b0" '+S+' stroke-width="1.6"/>':''}`;
+  else b = `<rect x="-2.5" y="-24" width="5" height="32" rx="2" fill="#7a5a49" ${S}/><circle cx="0" cy="-38" r="15" fill="${lv===1?'#6d727c':m}" ${S}/><circle cx="-4" cy="-42" r="5" fill="#fff" opacity=".45"/>${lv>=4?'<path d="M0 -46 l3 6 6 1 -4.5 4 1.5 6 -6 -3 -6 3 1.5 -6 -4.5 -4 6 -1z" fill="#fff" opacity=".9"/>':''}`;
+  return `<g class="wl${lv}" transform="scale(${sc})">${b}${lv>=5?sparkle:''}</g>`;
+}
+
+function chara(c, lv=1) {
+  const aura = `<circle class="aura" cx="50" cy="58" r="50" fill="#fff7b0" opacity=".5"/>`;
+  const cape = `<path d="M20 48 Q2 80 12 100 Q50 92 88 100 Q98 80 80 48Z" fill="#ff6f91" ${S} stroke-width="2"/>`;
+  const band = `<path d="M18 49 Q50 37 82 49" fill="none" stroke="#ff5c5c" stroke-width="6" stroke-linecap="round"/><path d="M80 49 L93 42 L91 56Z" fill="#ff5c5c"/>`;
+  const shield = `<g transform="translate(13 70)"><path d="M-10 -11 H10 V4 Q10 15 0 19 Q-10 15 -10 4Z" fill="${lv>=5?'#ff9de2':'#8fe9ff'}" ${S} stroke-width="2"/><path d="M0 -6 L2.4 0 L8 0 L3.5 4 L5.5 10 L0 6.5 L-5.5 10 L-3.5 4 L-8 0 L-2.4 0Z" fill="#fff"/></g>`;
+  const crown = `<path d="M33 36 L37 18 L44 29 L50 14 L56 29 L63 18 L67 36Z" fill="#ffd25e" ${S} stroke-width="2"/><circle cx="50" cy="27" r="2.8" fill="#ff5c8a"/>`;
+  const ears = {
+    bear: `<circle cx="25" cy="36" r="10" fill="${c.body}" ${S}/><circle cx="25" cy="36" r="5" fill="${c.inner}"/><circle cx="75" cy="36" r="10" fill="${c.body}" ${S}/><circle cx="75" cy="36" r="5" fill="${c.inner}"/>`,
+    cat:  `<path d="M19 50 L21 19 L47 34 Z" fill="${c.body}" ${S}/><path d="M26 42 L26 28 L38 34 Z" fill="${c.inner}"/><path d="M81 50 L79 19 L53 34 Z" fill="${c.body}" ${S}/><path d="M74 42 L74 28 L62 34 Z" fill="${c.inner}"/>`,
+    bunny:`<ellipse cx="34" cy="22" rx="8" ry="20" transform="rotate(-10 34 28)" fill="${c.body}" ${S}/><ellipse cx="34" cy="24" rx="3.6" ry="12" transform="rotate(-10 34 28)" fill="${c.inner}"/><ellipse cx="66" cy="22" rx="8" ry="20" transform="rotate(10 66 28)" fill="${c.body}" ${S}/><ellipse cx="66" cy="24" rx="3.6" ry="12" transform="rotate(10 66 28)" fill="${c.inner}"/>`
+  }[c.ear];
+  const blush = `<ellipse cx="28" cy="66" rx="6" ry="3.5" fill="#ff9fb4" opacity=".65"/><ellipse cx="72" cy="66" rx="6" ry="3.5" fill="#ff9fb4" opacity=".65"/>`;
+  const eye = (x) => `<ellipse cx="${x}" cy="57" rx="3.2" ry="4.2" fill="#3b2f2f"/><circle cx="${x+1}" cy="55.5" r="1.2" fill="#fff"/>`;
+  return `${lv>=5?aura:''}${lv>=3?cape:''}${ears}
+    <ellipse cx="36" cy="89" rx="10" ry="6" fill="${c.body}" ${S}/><ellipse cx="64" cy="89" rx="10" ry="6" fill="${c.body}" ${S}/>
+    <ellipse cx="50" cy="60" rx="35" ry="29" fill="${c.body}" ${S}/>
+    <ellipse cx="17" cy="66" rx="6" ry="8" transform="rotate(20 17 66)" fill="${c.body}" ${S}/>
+    ${blush}${lv>=2?band:''}
+    <g class="fn">${eye(37)}${eye(63)}<path d="M46 64 Q50 68 54 64" fill="none" ${S} stroke-width="2"/></g>
+    <g class="fh"><path d="M32 59 Q37 51 42 59 M58 59 Q63 51 68 59" fill="none" ${S} stroke-width="2.6"/><path d="M45 63 Q50 74 55 63 Z" fill="#e0606e" stroke="${INK}" stroke-width="1.5"/></g>
+    <g class="fe"><path d="M32 52 L42 57 L32 62 M68 52 L58 57 L68 62" fill="none" ${S} stroke-width="2.6"/><ellipse cx="50" cy="68" rx="4" ry="3.5" fill="#e0606e"/></g>
+    <g class="fs"><path d="M32 57 Q37 63 42 57 M58 57 Q63 63 68 57" fill="none" ${S} stroke-width="2.4"/><ellipse cx="50" cy="67" rx="2.6" ry="2" fill="#e0606e"/></g>
+    ${c.acc}${lv>=4?shield:''}${lv>=5?crown:''}
+    <g class="swing" style="transform-origin:83px 62px"><g class="weapon" transform="translate(83 62)">${weaponSVG(c.weapon, lv)}</g>
+      <ellipse cx="83" cy="66" rx="6" ry="8" transform="rotate(-20 83 66)" fill="${c.body}" ${S}/></g>`;
+}
+const svg = (inner, vb='0 0 100 100') => `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+
+const HEROES = [
+  { name:'몽이',  ga:'가', c:{ body:'#fffaf3', inner:'#ffc9d6', ear:'bear',  weapon:'sword',
+      acc:`<path d="M60 24 L74 17 L74 31 Z M60 24 L46 17 L46 31 Z" fill="#ff7fa5" ${S} stroke-width="2"/><circle cx="60" cy="24" r="4" fill="#ff5c8a"/>` } },
+  { name:'푸딩',  ga:'이', c:{ body:'#c7e6ff', inner:'#fff', ear:'cat',   weapon:'mallet',
+      acc:`<path d="M30 84 Q50 94 70 84 L72 90 Q50 101 28 90Z" fill="#ff8fab" ${S} stroke-width="2"/>` } },
+  { name:'토리',  ga:'가', c:{ body:'#fff1a8', inner:'#ffd1dc', ear:'bunny', weapon:'pan',
+      acc:`<g transform="translate(70 30)"><circle cx="0" cy="-6" r="5" fill="#ff9ec1"/><circle cx="6" cy="0" r="5" fill="#ff9ec1"/><circle cx="0" cy="6" r="5" fill="#ff9ec1"/><circle cx="-6" cy="0" r="5" fill="#ff9ec1"/><circle r="4" fill="#ffe27a"/></g>` } }
+];
+const VILLAGERS = [
+  { body:'#ffd4e6', inner:'#fff', ear:'bear', weapon:'sword', acc:'' },
+  { body:'#c9f2dc', inner:'#fff', ear:'cat',  weapon:'sword', acc:'' }
+];
+
+function monsterSVG(kind) {
+  const eyeX = `M33 49 L43 59 M43 49 L33 59 M57 49 L67 59 M67 49 L57 59`;
+  if (kind === 'blob') return svg(`
+    <path d="M27 38 L20 12 L42 30Z M73 38 L80 12 L58 30Z" fill="#fff0a8" ${S}/>
+    <ellipse cx="36" cy="90" rx="10" ry="6" fill="#9b7de8" ${S}/><ellipse cx="64" cy="90" rx="10" ry="6" fill="#9b7de8" ${S}/>
+    <ellipse cx="50" cy="60" rx="38" ry="32" fill="#b79bff" ${S}/><ellipse cx="50" cy="70" rx="22" ry="16" fill="#d3c3ff"/>
+    <ellipse cx="15" cy="56" rx="6" ry="9" fill="#b79bff" ${S}/><ellipse cx="85" cy="56" rx="6" ry="9" fill="#b79bff" ${S}/>
+    <g class="mn"><circle cx="37" cy="54" r="7" fill="#fff" ${S} stroke-width="2"/><circle cx="38" cy="55" r="3.4" fill="#3b2f2f"/><circle cx="63" cy="54" r="7" fill="#fff" ${S} stroke-width="2"/><circle cx="62" cy="55" r="3.4" fill="#3b2f2f"/>
+      <path d="M28 43 L45 49 M72 43 L55 49" fill="none" ${S} stroke-width="3.2"/>
+      <path d="M36 68 Q50 82 64 68 Z" fill="#6b2d5c" ${S} stroke-width="2"/><path d="M41 69 L44 76 L47 70Z M53 70 L56 76 L59 69Z" fill="#fff"/></g>
+    <g class="md"><path d="${eyeX}" fill="none" ${S} stroke-width="3"/><path d="M38 72 Q44 66 50 72 T62 72" fill="none" ${S} stroke-width="2.6"/></g>`);
+  if (kind === 'cyclops') return svg(`
+    <path d="M30 34 L36 12 L44 30 L50 8 L56 30 L64 12 L70 34Z" fill="#ffd86b" ${S}/>
+    <ellipse cx="36" cy="90" rx="10" ry="6" fill="#74cf8c" ${S}/><ellipse cx="64" cy="90" rx="10" ry="6" fill="#74cf8c" ${S}/>
+    <ellipse cx="50" cy="60" rx="37" ry="31" fill="#8fe0a0" ${S}/><ellipse cx="50" cy="72" rx="20" ry="13" fill="#bdf0c6"/>
+    <ellipse cx="15" cy="58" rx="6" ry="9" fill="#8fe0a0" ${S}/><ellipse cx="85" cy="58" rx="6" ry="9" fill="#8fe0a0" ${S}/>
+    <g class="mn"><circle cx="50" cy="52" r="14" fill="#fff" ${S}/><circle cx="52" cy="53" r="6.5" fill="#3b2f2f"/><circle cx="54" cy="50" r="2" fill="#fff"/>
+      <path d="M33 38 L66 44" fill="none" ${S} stroke-width="3.2"/>
+      <path d="M34 70 L40 64 L46 70 L52 64 L58 70 L64 64 L68 70 Q50 84 34 70Z" fill="#fff" ${S} stroke-width="2"/></g>
+    <g class="md"><path d="M40 42 L60 62 M60 42 L40 62" fill="none" ${S} stroke-width="3.4"/><path d="M38 74 Q44 68 50 74 T62 74" fill="none" ${S} stroke-width="2.6"/></g>`);
+  return svg(`
+    <path d="M32 26 L28 10 L42 22Z M68 26 L72 10 L58 22Z" fill="#ff8a8a" ${S}/>
+    <path d="M17 92 L17 52 Q17 18 50 18 Q83 18 83 52 L83 92 L72 83 L61 92 L50 83 L39 92 L28 83 Z" fill="#cdd7ff" ${S}/>
+    <ellipse cx="50" cy="66" rx="20" ry="16" fill="#e7ecff"/>
+    <ellipse cx="14" cy="60" rx="6" ry="8" fill="#cdd7ff" ${S}/><ellipse cx="86" cy="60" rx="6" ry="8" fill="#cdd7ff" ${S}/>
+    <g class="mn"><ellipse cx="38" cy="52" rx="5" ry="7" fill="#3b2f2f"/><ellipse cx="62" cy="52" rx="5" ry="7" fill="#3b2f2f"/><circle cx="39.5" cy="49" r="1.8" fill="#fff"/><circle cx="63.5" cy="49" r="1.8" fill="#fff"/>
+      <path d="M30 40 L45 45 M70 40 L55 45" fill="none" ${S} stroke-width="3"/>
+      <path d="M38 64 Q50 78 62 64 Z" fill="#6b2d5c" ${S} stroke-width="2"/><path d="M46 70 Q50 84 56 70Z" fill="#ff8fa3" ${S} stroke-width="2"/></g>
+    <g class="md"><path d="M33 46 L43 58 M43 46 L33 58 M57 46 L67 58 M67 46 L57 58" fill="none" ${S} stroke-width="3"/><path d="M40 70 Q46 64 52 70 T62 70" fill="none" ${S} stroke-width="2.6"/></g>`);
+}
+function weedSVG() {
+  return svg(`
+    <ellipse cx="50" cy="90" rx="30" ry="8" fill="#a1704a" ${S} stroke-width="2"/><ellipse cx="50" cy="90" rx="14" ry="3.5" fill="#6d4a30"/>
+    <g class="roots"><path d="M42 78 Q34 92 26 94 M50 80 L50 98 M58 78 Q66 92 74 94" fill="none" stroke="#8a5a3a" stroke-width="3.5" stroke-linecap="round"/></g>
+    <path d="M50 52 Q36 28 22 20 Q42 24 52 50Z M50 52 Q50 24 50 8 Q58 28 54 50Z M50 52 Q64 28 80 22 Q60 26 50 50Z" fill="#5fc15a" ${S}/>
+    <ellipse cx="50" cy="66" rx="19" ry="17" fill="#8bd46e" ${S}/>
+    <ellipse cx="38" cy="72" rx="4.5" ry="3" fill="#ff9fb4" opacity=".7"/><ellipse cx="62" cy="72" rx="4.5" ry="3" fill="#ff9fb4" opacity=".7"/>
+    <g class="mn"><ellipse cx="43" cy="64" rx="2.6" ry="3.4" fill="#3b2f2f"/><ellipse cx="57" cy="64" rx="2.6" ry="3.4" fill="#3b2f2f"/><path d="M45 72 Q50 76 55 72" fill="none" ${S} stroke-width="2"/></g>
+    <g class="md"><path d="M39 61 L47 67 M47 61 L39 67 M53 61 L61 67 M61 61 L53 67" fill="none" ${S} stroke-width="2.4"/><ellipse cx="50" cy="75" rx="3.5" ry="3" fill="#e0606e"/></g>`);
+}
+const starsSVG = svg(`<g class="fxs"><path d="M50 4 L58 36 L92 30 L66 52 L88 80 L54 68 L42 98 L36 66 L6 70 L28 48 L8 20 L40 34Z" fill="#ffe56b" ${S}/><circle cx="50" cy="50" r="10" fill="#fff"/></g>`);
+const dustSVG = svg(`<g class="fxs"><circle cx="30" cy="62" r="18" fill="#fff" opacity=".9"/><circle cx="56" cy="52" r="22" fill="#fff" opacity=".9"/><circle cx="76" cy="66" r="16" fill="#fff" opacity=".9"/></g>`);
+const treeSVG = svg(`<rect x="44" y="60" width="12" height="38" rx="5" fill="#a97b52" ${S}/><circle cx="50" cy="40" r="32" fill="#6cc96a" ${S}/><circle cx="38" cy="34" r="8" fill="#8de08a"/><circle cx="62" cy="24" r="5" fill="#8de08a"/><circle cx="42" cy="48" r="4" fill="#ff8fab"/><circle cx="62" cy="50" r="4" fill="#ff8fab"/>`);
+const flowerSVG = (c) => svg(`<path d="M50 96 L50 56" stroke="#4faa52" stroke-width="6" stroke-linecap="round"/><g transform="translate(50 46)"><circle cx="0" cy="-14" r="11" fill="${c}"/><circle cx="14" cy="0" r="11" fill="${c}"/><circle cx="0" cy="14" r="11" fill="${c}"/><circle cx="-14" cy="0" r="11" fill="${c}"/><circle r="9" fill="#ffe27a"/></g>`);
+
+const workBack = `<svg viewBox="0 0 1000 420" preserveAspectRatio="none">
+  <circle cx="800" cy="130" r="42" fill="#fff3a6"/><circle cx="800" cy="130" r="58" fill="#fff3a6" opacity=".35"/>
+  <path d="M0 420 L0 250 Q160 140 330 240 T640 220 T1000 230 L1000 420Z" fill="#b7e8a3"/>
+  <path d="M0 420 L0 320 Q200 230 420 310 T780 290 T1000 300 L1000 420Z" fill="#96dc80"/>
+  <g transform="translate(250 230)"><rect x="-8" y="0" width="16" height="30" rx="5" fill="#fff4e0" ${S}/><path d="M-34 4 Q0 -48 34 4Z" fill="#ff8f8f" ${S}/><circle cx="-10" cy="-8" r="4" fill="#fff"/><circle cx="12" cy="-12" r="3" fill="#fff"/></g>
+  <g transform="translate(760 250) scale(.8)"><rect x="-8" y="0" width="16" height="30" rx="5" fill="#fff4e0" ${S}/><path d="M-34 4 Q0 -48 34 4Z" fill="#b79bff" ${S}/><circle cx="-10" cy="-8" r="4" fill="#fff"/><circle cx="12" cy="-12" r="3" fill="#fff"/></g>
+</svg>
+<div class="cloud" style="top:50px;left:0;width:110px;animation-delay:-8s"></div>
+<div class="cloud" style="top:110px;left:0;width:80px;animation-delay:-26s;animation-duration:55s"></div>`;
+
+const homeBack = `<svg viewBox="0 0 1000 420" preserveAspectRatio="none">
+  <rect width="1000" height="420" fill="#ffd9c7"/>
+  <g fill="#ffc4ab">${Array.from({length:40},(_,i)=>`<circle cx="${(i%10)*100+30+(Math.floor(i/10)%2)*50}" cy="${Math.floor(i/10)*70+30}" r="7"/>`).join('')}</g>
+  <rect y="330" width="1000" height="90" fill="#f4b49a"/><rect y="326" width="1000" height="8" fill="#fff3ea"/>
+  <rect x="390" y="60" width="220" height="190" rx="18" fill="#2a2f5f" ${S} stroke-width="5"/>
+  <circle cx="470" cy="120" r="30" fill="#fff6c9"/><circle cx="484" cy="112" r="26" fill="#2a2f5f"/>
+  <g fill="#fff"><circle cx="540" cy="100" r="3"/><circle cx="570" cy="150" r="2.5"/><circle cx="430" cy="190" r="2.5"/><circle cx="520" cy="200" r="3"/></g>
+  <path d="M500 62 V248 M392 154 H608" stroke="${INK}" stroke-width="5"/>
+  <path d="M375 56 Q415 150 375 255 L350 255 L350 56Z M625 56 Q585 150 625 255 L650 255 L650 56Z" fill="#ffb3c6" ${S}/>
+  <rect x="130" y="110" width="110" height="90" rx="10" fill="#fff" ${S} stroke-width="4"/><circle cx="185" cy="155" r="26" fill="#fffaf3" ${S}/>
+  <rect x="740" y="190" width="170" height="10" rx="4" fill="#b07a4f" ${S}/><path d="M800 190 Q810 150 830 150 Q850 150 860 190Z" fill="#ff9ec1" ${S}/><rect x="826" y="130" width="8" height="22" fill="#4faa52"/>
+</svg>`;
+
+/* ============ 장면 구성 ============ */
+const ent = (inner, o) => `<div class="pos ${o.cls||''}" style="${o.x==null?'':`left:${o.x}%;top:${o.y}%;`}${o.style||''}"><div class="ent" style="--s:${o.s||80}px"><div class="shadow"></div><div class="spr">${inner}</div>${o.extra||''}</div></div>`;
+const FLOWERS = [[10,30,'#ff9ec1'],[88,26,'#fff'],[30,18,'#ffd25e'],[70,14,'#ff9ec1'],[8,60,'#fff'],[93,62,'#ffd25e'],[52,86,'#ff9ec1'],[40,92,'#fff']];
+
+const MONSTERS = [['blob','보라 말랑이'],['cyclops','초록 외눈이'],['ghost','둥실 유령']];
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const TARGET = { x:74, y:58 };
+const HERO_POS = [[18,34],[26,58],[16,80]];
+
+function buildScene(b) {
+  const t = taskOf(b);
+  const delay = `animation-delay:-${((elapsed/1000)%20).toFixed(2)}s`;
+  stage.dataset.task = t.type;
+  let world, label;
+  if (t.type === 'home') {
+    stage.dataset.scene = 'home';
+    const heads = (y) => HEROES.map((h,i) => `<g transform="translate(${24+i*65} ${y}) scale(.62)">${chara(h.c,lvOf(i))}</g>`).join('');
+    const tub = svg(`<rect x="14" y="118" width="212" height="86" rx="30" fill="#fff" ${S}/>
+      <g class="m-h">${heads(72)}</g>
+      <rect x="10" y="124" width="220" height="80" rx="30" fill="#bfe8ff" ${S} stroke-width="3"/>
+      <path d="M40 150 H200 M40 170 H200" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+      <circle cx="36" cy="214" r="7" fill="#ffd25e" ${S}/><circle cx="204" cy="214" r="7" fill="#ffd25e" ${S}/>
+      <g fill="#fff" ${S} stroke-width="2"><circle cx="48" cy="122" r="10"/><circle cx="84" cy="117" r="7"/><circle cx="150" cy="120" r="11"/><circle cx="196" cy="121" r="8"/></g>
+      <g class="duck"><ellipse cx="118" cy="128" rx="12" ry="8" fill="#ffd84d" ${S} stroke-width="2"/><circle cx="127" cy="117" r="7" fill="#ffd84d" ${S} stroke-width="2"/><path d="M133 117 L141 119 L133 121Z" fill="#ff9a3c"/><circle cx="128" cy="115" r="1.4" fill="#3b2f2f"/></g>`, '0 0 240 240');
+    const bed = svg(`<rect x="6" y="92" width="228" height="60" rx="16" fill="#c98b5a" ${S}/>
+      <rect x="20" y="126" width="64" height="32" rx="14" fill="#fff" ${S}/><rect x="88" y="126" width="64" height="32" rx="14" fill="#fff" ${S}/><rect x="156" y="126" width="64" height="32" rx="14" fill="#fff" ${S}/>
+      <g class="m-s">${HEROES.map((h,i) => `<g transform="translate(${21+i*68} 92) scale(.62)">${chara(h.c,lvOf(i))}</g>`).join('')}</g>
+      <rect x="8" y="148" width="224" height="62" rx="20" fill="#ffb3c6" ${S}/>
+      <path d="M30 160 H210 M30 180 H210" stroke="#fff" stroke-width="4" stroke-dasharray="2 12" stroke-linecap="round"/>
+      <rect x="4" y="198" width="232" height="22" rx="10" fill="#fff6e5" ${S}/><rect x="16" y="218" width="14" height="14" rx="4" fill="#c98b5a" ${S}/><rect x="210" y="218" width="14" height="14" rx="4" fill="#c98b5a" ${S}/>`, '0 0 240 240');
+    const bubs = [30,48,64].map((l,i)=>`<i class="bub" style="left:${l}%;top:34%;animation-delay:${i*.5}s"></i>`).join('');
+    const zzs = [34,50,66].map((l,i)=>`<b class="zz" style="left:${l}%;top:26%;animation-delay:${i*.7}s">Z</b>`).join('');
+    world = `<div class="back">${homeBack}</div><div class="rug"></div>
+      ${ent(tub,{x:50,y:62,s:250,cls:'tub',extra:bubs})}${ent(bed,{x:50,y:62,s:250,cls:'bed',extra:zzs})}`;
+    label = '🏠 집에 돌아왔어요';
+  } else {
+    stage.dataset.scene = 'work';
+    const hunter = b % 4;
+    const trees = [[5,10,150],[95,12,150],[18,6,120],[84,6,120],[3,76,150],[97,70,150]].map(([x,y,s])=>ent(treeSVG,{x,y,s})).join('');
+    const flowers = FLOWERS.map(([x,y,c])=>ent(flowerSVG(c),{x,y,s:30})).join('');
+    const villagers = ent(svg(chara(VILLAGERS[0])),{x:46,y:20,s:52,cls:'villager'}) + ent(svg(chara(VILLAGERS[1])),{x:90,y:42,s:52,cls:'villager',style:'animation-delay:.4s'});
+    const heroes = HEROES.map((h,i) => {
+      const [x,y] = HERO_POS[i];
+      return ent(svg(chara(h.c,lvOf(i))), i===hunter
+        ? { s:86, cls:'hero hunter', style:`--x0:${x}%;--y0:${y}%;--x1:${TARGET.x-15}%;--y1:${TARGET.y}%;` }
+        : { x, y, s:86, cls:'hero' });
+    }).join('');
+    const target = t.type === 'weed'
+      ? ent(weedSVG(), { x:TARGET.x, y:TARGET.y, s:90, cls:'target weed', extra:`<div class="plus">+1 잡초</div>` })
+      : ent(monsterSVG(t.kind), { x:TARGET.x, y:TARGET.y, s:104, cls:'target monster', extra:`<div class="plus">+1 괴물</div>` });
+    const fx = ent(t.type==='weed' ? dustSVG : starsSVG, { x:TARGET.x, y:TARGET.y+1, s:90, cls:'fxpos' }).replace('class="ent"','class="ent fxent"');
+    world = `<div class="back">${workBack}</div>${trees}${flowers}${villagers}${heroes}${target}${fx}`;
+    label = t.type === 'weed' ? `🌿 ${HEROES[hunter].name} · 잡초밭 발견!` : `⚔️ ${HEROES[hunter].name} 출동 · ${t.name}`;
+  }
+  stage.innerHTML = `<span class="label">${label}</span><div class="cam" style="${delay}"><div class="ground">${world}</div></div>`;
+}
+
+/* ============ 스톱워치 로직 ============ */
+const $ = id => document.getElementById(id);
+const display=$('display'), startBtn=$('start'), lapBtn=$('lap'), resetBtn=$('reset'), lapsEl=$('laps');
+const stage=$('stage'), msg=$('msg');
+const BLOCK = 3000;
+let running=false, startTime=0, elapsed=0, lastLap=0, raf, laps=[];
+let tasks=[], stats={mon:0,weed:0,rest:0}, tallied=0, shownKey='';
+let xp=[0,0,0], pendingUps=[];
+const lvOf = i => LV_AT.filter(t => xp[i] >= t).length;
+function renderCrew() {
+  $('crew').innerHTML = HEROES.map((h,i) => { const lv=lvOf(i); return `<span>${h.name} <b>Lv.${lv}</b> · ${WNAMES[h.c.weapon][lv-1]}</span>`; }).join('');
+}
+function showUps() {
+  if (!pendingUps.length) return;
+  const u = pendingUps[pendingUps.length-1]; pendingUps = [];
+  const h = HEROES[u.i];
+  const el = document.createElement('div');
+  el.className = 'lvup';
+  el.textContent = `✨ ${h.name} 레벨 업! Lv.${u.lv} · ${WNAMES[h.c.weapon][u.lv-1]}`;
+  stage.appendChild(el);
+}
+
+const fmt = ms => {
+  const cs=Math.floor(ms/10)%100, s=Math.floor(ms/1000)%60, m=Math.floor(ms/60000)%60, h=Math.floor(ms/3600000);
+  const p=n=>String(n).padStart(2,'0');
+  return (h?p(h)+':':'')+p(m)+':'+p(s)+'.'+p(cs);
+};
+const render = ms => { const t=fmt(ms), i=t.lastIndexOf('.'); display.innerHTML=t.slice(0,i)+'<small>'+t.slice(i)+'</small>'; };
+
+function taskOf(b) {
+  if (b % 4 === 3) return { type:'home' };
+  if (!tasks[b]) {
+    if (Math.random() < 0.3) tasks[b] = { type:'weed' };
+    else { const m = pick(MONSTERS); tasks[b] = { type:'monster', kind:m[0], name:m[1] }; }
+  }
+  return tasks[b];
+}
+function updateCycle(b) { const pos=b%4; [...$('cycle').children].forEach((el,i)=>el.classList.toggle('on', i<=pos)); }
+
+function sync() {
+  const b = Math.floor(elapsed/BLOCK);
+  while (tallied < b) {
+    const tt = taskOf(tallied);
+    if (tt.type==='monster') stats.mon++; else if (tt.type==='weed') stats.weed++; else stats.rest++;
+    if (tt.type !== 'home') {
+      const i = tallied % 4, before = lvOf(i);
+      xp[i] += tt.type==='monster' ? 2 : 1;
+      if (lvOf(i) > before) pendingUps.push({ i, lv:lvOf(i) });
+    }
+    tallied++;
+  }
+  const p = (elapsed%BLOCK)/BLOCK, t = taskOf(b);
+  let phase;
+  if (!running && elapsed===0) phase='idle';
+  else if (t.type==='home') phase = p<.5 ? 'wash' : 'sleep';
+  else phase = p<.4 ? 'approach' : p<.75 ? 'act' : 'done';
+
+  const key = b+':'+phase;
+  if (key !== shownKey) {
+    if (!shownKey || shownKey.split(':')[0] != b) { buildScene(b); showUps(); }
+    stage.dataset.phase = phase;
+    const h = HEROES[b%4];
+    if (t.type==='home') msg.textContent = phase==='sleep' ? '😴 모두 푹 쉬는 중... 내일을 위해 충전!' : '🛁 보글보글, 다 같이 씻는 중이에요';
+    else if (phase!=='idle') msg.textContent =
+        phase==='approach' ? (t.type==='weed' ? `🌱 ${h.name}${h.ga} 잡초에게 다가가요` : `👀 ${h.name}${h.ga} ${t.name}에게 다가가요`)
+      : phase==='act'      ? (t.type==='weed' ? `💪 ${h.name}: 영차! 뽑는 중!` : `⚔️ ${h.name}의 공격! 뿅뿅!`)
+      :                      (t.type==='weed' ? '✨ 잡초 뽑기 성공!' : `🎉 ${t.name} 잡았다!`);
+    updateCycle(b);
+    shownKey = key;
+  }
+  renderCrew();
+  $('sMon').textContent=stats.mon; $('sWeed').textContent=stats.weed; $('sRest').textContent=stats.rest;
+}
+
+const tick = () => { elapsed=performance.now()-startTime; render(elapsed); sync(); raf=requestAnimationFrame(tick); };
+
+function toggle() {
+  if (running) {
+    cancelAnimationFrame(raf); running=false;
+    startBtn.textContent='계속'; startBtn.classList.remove('running');
+    lapBtn.disabled=true; stage.classList.add('paused'); msg.textContent='⏸ 잠시 멈춤';
+  } else {
+    startTime=performance.now()-elapsed; running=true;
+    if (elapsed===0) shownKey='';
+    stage.classList.remove('paused'); tick();
+    startBtn.textContent='정지'; startBtn.classList.add('running');
+    lapBtn.disabled=false; resetBtn.disabled=false;
+  }
+}
+function lap() {
+  if (!running) return;
+  laps.unshift({ n:laps.length+1, split:elapsed-lastLap, total:elapsed });
+  lastLap=elapsed; drawLaps();
+}
+function drawLaps() {
+  const sp=laps.map(l=>l.split), best=Math.min(...sp), worst=Math.max(...sp);
+  lapsEl.innerHTML = laps.map(l => {
+    const cls = laps.length>2 ? (l.split===best?'best':l.split===worst?'worst':'') : '';
+    return `<li class="${cls}"><span>랩 ${l.n}</span><b>${fmt(l.split)}</b><span>${fmt(l.total)}</span></li>`;
+  }).join('');
+}
+function reset() {
+  cancelAnimationFrame(raf); running=false; elapsed=0; lastLap=0; laps=[];
+  tasks=[]; stats={mon:0,weed:0,rest:0}; tallied=0; shownKey=''; xp=[0,0,0]; pendingUps=[];
+  render(0); lapsEl.innerHTML='';
+  startBtn.textContent='시작'; startBtn.classList.remove('running');
+  lapBtn.disabled=true; resetBtn.disabled=true; stage.classList.remove('paused');
+  msg.textContent='시작 버튼을 누르면 모험이 시작돼요!';
+  sync();
+}
+startBtn.onclick=toggle; lapBtn.onclick=lap; resetBtn.onclick=reset;
+document.addEventListener('keydown', e => {
+  if (e.code==='Space') { e.preventDefault(); toggle(); }
+  else if (e.key==='l'||e.key==='L') lap();
+  else if (e.key==='r'||e.key==='R') reset();
+});
+sync();
+</script>
+</body>
+</html>
